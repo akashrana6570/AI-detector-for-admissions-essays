@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — an admissions-essay AI detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAFAF6;
+    --paper-dim:#F1F0EA;
+    --ink:#20242B;
+    --ink-soft:#5A5F68;
+    --ink-faint:#9AA0A8;
+    --line:#DEDBD0;
+    --cool:#3B5C7A;      /* human-leaning */
+    --cool-bg:#E7EEF3;
+    --hot:#B5432B;       /* AI-leaning */
+    --hot-bg:#FBE7DE;
+    --amber:#9C6B14;
+    --good:#3F7A56;
+    --radius:3px;
+    --serif:'Source Serif 4', Georgia, serif;
+    --sans:'Inter', -apple-system, sans-serif;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px 80px;}
+
+  /* ---------- header ---------- */
+  header{
+    padding:40px 0 26px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:32px;
+    display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:baseline;gap:12px;}
+  .brand .mark{
+    font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--ink-faint);
+    border:1px solid var(--line); padding:3px 7px; border-radius:2px;
+  }
+  h1{
+    font-family:var(--serif);font-weight:700;font-size:32px;margin:0;letter-spacing:-.01em;
+  }
+  .tagline{font-family:var(--serif);font-style:italic;color:var(--ink-soft);font-size:16px;max-width:420px;text-align:right;}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start;}
+  @media (max-width:900px){.grid{grid-template-columns:1fr;}}
+
+  .panel{
+    background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  }
+  .panel-head{
+    padding:14px 18px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+  }
+
+  /* input area */
+  textarea{
+    width:100%;min-height:230px;border:none;resize:vertical;
+    font-family:var(--serif);font-size:17px;line-height:1.65;color:var(--ink);
+    padding:20px;outline:none;background:transparent;
+  }
+  .examples{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 16px;}
+  .ex-btn{
+    font-family:var(--mono);font-size:11px;letter-spacing:.03em;
+    background:var(--paper-dim);border:1px solid var(--line);border-radius:2px;
+    padding:6px 10px;cursor:pointer;color:var(--ink-soft);
+  }
+  .ex-btn:hover{border-color:var(--ink-soft);color:var(--ink);}
+  .run-row{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-top:1px solid var(--line);}
+  .wc{font-family:var(--mono);font-size:11px;color:var(--ink-faint);}
+  button.primary{
+    font-family:var(--sans);font-weight:600;font-size:13px;
+    background:var(--ink);color:#fff;border:none;border-radius:2px;
+    padding:10px 18px;cursor:pointer;letter-spacing:.01em;
+  }
+  button.primary:hover{background:#000;}
+  button.primary:disabled{background:var(--ink-faint);cursor:default;}
+
+  /* ---------- result: essay with highlights ---------- */
+  #resultPanel{display:none;margin-top:28px;}
+  .verdict-strip{
+    display:flex;align-items:center;gap:18px;padding:18px 22px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap;
+  }
+  .gauge{
+    width:64px;height:64px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:600;font-size:15px;
+    border:3px solid var(--line);
+  }
+  .verdict-text{flex:1;min-width:220px;}
+  .verdict-text .headline{font-family:var(--serif);font-size:19px;font-weight:600;}
+  .verdict-text .sub{font-size:13px;color:var(--ink-soft);margin-top:2px;}
+  .legend{display:flex;gap:14px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--ink-soft);}
+  .legend .sw{width:14px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle;}
+
+  .essay-body{
+    padding:26px 30px;font-family:var(--serif);font-size:18px;line-height:1.85;
+  }
+  .essay-body p{margin:0 0 1.3em;}
+  mark.s{
+    background:transparent;color:inherit;border-radius:2px;padding:0 1px;
+    cursor:pointer;box-decoration-break:clone;-webkit-box-decoration-break:clone;
+    border-bottom:2px solid transparent;
+  }
+  mark.s:hover, mark.s.active{ outline:1px solid var(--ink-faint); }
+
+  /* ---------- sentence detail ---------- */
+  #detail{
+    border-top:1px solid var(--line);padding:18px 30px 26px;background:var(--paper-dim);
+    display:none;
+  }
+  #detail.show{display:block;}
+  #detail .dhead{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);margin-bottom:8px;}
+  #detail .dquote{font-family:var(--serif);font-style:italic;font-size:16px;margin-bottom:12px;color:var(--ink);}
+  #detail .dscore{font-family:var(--mono);font-size:13px;margin-bottom:12px;}
+  #detail ul{margin:0;padding-left:18px;}
+  #detail li{margin-bottom:6px;font-size:14px;}
+  #detail li .tag{font-family:var(--mono);font-size:10px;color:var(--ink-faint);}
+
+  /* ---------- side panel: instrument readout ---------- */
+  .readout-item{padding:14px 18px;border-bottom:1px solid var(--line);}
+  .readout-item:last-child{border-bottom:none;}
+  .ri-label{font-size:12px;color:var(--ink-soft);margin-bottom:6px;display:flex;justify-content:space-between;}
+  .ri-val{font-family:var(--mono);font-size:11px;color:var(--ink);}
+  .bar-track{height:6px;background:var(--paper-dim);border-radius:3px;overflow:hidden;position:relative;}
+  .bar-fill{height:100%;border-radius:3px;}
+  .bar-mid{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ink-faint);}
+
+  /* ---------- methodology / honesty sections ---------- */
+  .doc-section{margin-top:40px;}
+  .doc-section h2{
+    font-family:var(--serif);font-size:22px;border-bottom:1px solid var(--line);
+    padding-bottom:10px;margin-bottom:16px;
+  }
+  .doc-section h3{font-family:var(--sans);font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:22px 0 10px;}
+  .doc-section p{font-size:15px;line-height:1.7;color:#333;max-width:820px;}
+  .doc-section ul{font-size:15px;line-height:1.7;color:#333;max-width:820px;}
+  .stat-row{display:flex;gap:28px;flex-wrap:wrap;margin:16px 0;}
+  .stat{
+    font-family:var(--mono);border:1px solid var(--line);border-radius:2px;padding:10px 16px;min-width:120px;
+  }
+  .stat .n{font-size:22px;font-weight:600;}
+  .stat .l{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;}
+  table.wrong{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0;}
+  table.wrong th, table.wrong td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  table.wrong th{background:var(--paper-dim);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;}
+  .callout{
+    border-left:3px solid var(--amber);background:#FBF6E9;padding:14px 18px;margin:16px 0;max-width:820px;font-size:14.5px;
+  }
+  .callout b{color:var(--amber);}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-faint);font-family:var(--mono);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>Marginal</h1>
+      <span class="mark">v0.1 — local instrument</span>
+    </div>
+    <div class="tagline">Paste an essay. It shows which sentences read as machine-smoothed, and the measurements behind each flag — nothing is sent to a chat model to render a verdict.</div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <div class="panel-head">
+          <span>Input essay</span>
+          <span id="wcTop"></span>
+        </div>
+        <textarea id="essayInput" placeholder="Paste an admissions essay here…"></textarea>
+        <div class="examples">
+          <button class="ex-btn" data-ex="mixed">Load: human draft + AI-polished half</button>
+          <button class="ex-btn" data-ex="human">Load: human essay</button>
+          <button class="ex-btn" data-ex="ai">Load: AI-generated essay</button>
+          <button class="ex-btn" data-ex="esl">Load: non-native English writer</button>
+        </div>
+        <div class="run-row">
+          <span class="wc" id="wc">0 words</span>
+          <button class="primary" id="runBtn">Analyze essay</button>
+        </div>
+      </div>
+
+      <div class="panel" id="resultPanel">
+        <div class="verdict-strip" id="verdictStrip"></div>
+        <div class="essay-body" id="essayBody"></div>
+        <div id="detail"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="panel-head"><span>Instrument readout</span></div>
+        <div id="readout"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ METHODOLOGY / HONESTY ============ -->
+  <div class="doc-section">
+    <h2>How this works</h2>
+    <p>The essay is split into sentences. Each sentence is run through a small trigram language model — trained only on a reference set of human-written admissions essays, sitting entirely in this page — to get an average per-word probability under "typical human phrasing." That number, plus nine other measurable properties of the text (how uniform the sentence lengths are, how often it uses stock transitional phrases, how often it uses contractions, lexical diversity, repeated three-word phrases, punctuation variety, and how repetitive the sentence openings are) form a feature vector. A logistic regression — ten weights and a bias, fit once on labeled example essays and frozen into this page — turns that vector into the essay-level probability shown above. No chat model is called at run time; every number on this page is arithmetic on the essay you pasted.</p>
+
+    <h3>Signals used, and why</h3>
+    <ul>
+      <li><b>Stock-phrase rate</b> — hits against a fixed list of phrases current LLMs over-use in this genre ("moreover," "it is a testament to," "this journey," "underscore," "delve," "boundless," etc.), per 100 words.</li>
+      <li><b>Contraction rate</b> — human personal essays lean on contractions; heavily "polished" prose tends to drop them.</li>
+      <li><b>Sentence-length uniformity</b> — the standard deviation of sentence length across the essay. Human writing is bursty: short sentences crash into long ones. Machine-smoothed prose tends toward an even rhythm.</li>
+      <li><b>Reference-model surprisal</b> — average log-probability of each sentence's words under the trigram model.</li>
+      <li><b>Lexical diversity, repeated trigrams, sentence-opener repetition, punctuation variety</b> — secondary structural signals.</li>
+    </ul>
+
+    <div class="callout"><b>One honest caveat about the surprisal signal:</b> <span id="calloutSign"></span></div>
+
+    <h3>Where the model draws the line</h3>
+    <p>The model never asks a language model "is this AI?" and relays the answer. The only place a language-model-like component appears is the small trigram model used to get a token-probability number — an instrument, not a judge. The decision boundary (the ten weights below) is fit with ordinary logistic regression on the labeled feature vectors, entirely outside of any generative model.</p>
+  </div>
+
+  <div class="doc-section">
+    <h2>Data — where it came from, and what it doesn't cover</h2>
+    <p><b>This sandbox has no internet access</b>, so nothing here was scraped from a real admissions-essay dataset or generated by calling an actual LLM API. Every training and test essay was written by hand for this project to imitate the two populations: a <i>human</i> set written to have the uneven rhythm, concrete detail, and informality of real personal statements, and an <i>AI</i> set written in the stock-phrase, triadic-list, evenly-paced register that current models reliably fall into on this exact task when asked for a "polished admissions essay." That is a real limitation, not a rounding error — a model tuned on one author's impression of "how AI writes admissions essays" will not generalize the way a model trained on thousands of real submissions from many schools and many AI systems would.</p>
+    <div class="stat-row" id="dataStats"></div>
+    <p>Coverage gaps worth naming directly: every essay is in the 150–260 word range (real submissions run longer and shorter); every AI example came from the same "voice" (one writer's model of GPT-style output, not five different real generators); there is no essay describing a STEM research project or a visual-arts portfolio; and the whole corpus is American college-admissions register — it says nothing about, say, UK personal statements or grad-school statements of purpose.</p>
+  </div>
+
+  <div class="doc-section">
+    <h2>Honest accuracy</h2>
+    <div class="stat-row" id="accStats"></div>
+    <p>That number is on a held-out set of 16 essays the model never trained on — small enough that one misclassification moves it by more than six points, so treat it as a rough read, not a benchmark.</p>
+    <h3>Three cases the detector gets confidently wrong</h3>
+    <table class="wrong" id="wrongTable"></table>
+  </div>
+
+  <div class="doc-section">
+    <h2>The ESL failure mode</h2>
+    <p>Detectors like this one have a well-documented habit of flagging text by writers who learned English as a second language — because "simpler, more repetitive sentence structure" and "machine-generated" can look similar to a statistical model. We built this in as a check, not an afterthought: three short essays written in a fluent-but-non-native register (simpler verb forms, repeated sentence openers, fewer contractions) were scored the same way as everything else.</p>
+    <div class="stat-row" id="eslStats"></div>
+    <p><b>Result: this detector has exactly that problem.</b> All three ESL-register essays score as more "AI-like" than the median genuinely human essay in the test set — not because they are machine-written, but because two of the strongest features in the model (contraction rate and lexical/structural repetition) correlate with non-native fluency for reasons that have nothing to do with authorship. We are reporting this as a known, unresolved limitation rather than hiding it: as built, this tool is not safe to use as the sole basis for an accusation against a non-native English writer, and any real deployment would need either a separate calibration for that population or a much larger, more representative training set before that risk goes away.</p>
+  </div>
+
+  <footer>Marginal — built as an instrument, not a verdict machine. Every score on this page is reproducible from the essay text and the weights printed in this file's source.</footer>
+</div>
+
+<script id="model-data" type="application/json">__MODEL_JSON__</script>
+<script id="examples-data" type="application/json">__EXAMPLES_JSON__</script>
+<script>
+__APP_JS__
+</script>
+</body>
+</html>
